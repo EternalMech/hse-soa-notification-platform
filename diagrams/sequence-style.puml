@@ -1,0 +1,13 @@
+skinparam backgroundColor white
+skinparam defaultFontName Arial
+skinparam maxMessageSize 205
+skinparam sequence {
+  ArrowColor #334D65
+  ParticipantBorderColor #345772
+  ParticipantBackgroundColor #E6EFF6
+  LifeLineBorderColor #8195A6
+  GroupBorderColor #8195A6
+  GroupBackgroundColor #F2F5F8
+  DividerBackgroundColor #E6EFF6
+}
+hide footbox

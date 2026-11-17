@@ -1,0 +1,31 @@
+@startuml
+!include sequence-style.puml
+title B. Основной сценарий — push подтверждён
+
+participant "Банк и Kafka" as Bank
+participant "Приём / relay" as In
+database "Опер. БД" as DB
+participant Temporal as T
+participant "Воркеры" as W
+participant "Push-провайдер" as Push
+participant "Приложение" as App
+
+Bank -> In : Событие из outbox через Kafka
+In -> DB : Коммит входа и команды старта
+In -> Bank : Фиксирует offset
+In -> T : StartWorkflow(notification_id)
+T -> T : Сохраняет старт, ставит задачи
+T -> W : Задача workflow и activity отправки
+W -> DB : Фиксирует начало попытки перед вызовом
+W -> Push : Отправляет push с attempt_id
+Push --> W : Запрос принят
+W -> T : Результат activity и план таймера
+Push -> App : Отправляет push
+App -> In : ACK после обработки с дедупликацией
+In -> DB : Сохраняет проверенный ACK
+In -> T : Signal(callback_id)
+T -> W : Задача workflow с подтверждением
+W -> T : Фиксирует DELIVERED и отмену таймера
+T -> W : Запускает activity обновления статуса
+W -> DB : Пишет версионированную проекцию
+@enduml

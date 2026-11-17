@@ -1,0 +1,44 @@
+@startuml
+!pragma layout smetana
+!include <C4/C4_Container>
+
+LAYOUT_TOP_DOWN()
+title B. Notification Platform — C4 Container
+
+Person(user, "Клиент банка", "Получает уведомления, управляет предпочтениями")
+System_Ext(bank, "Банковские сервисы", "Платежи, переводы, продукты и маркетинг; outbox у источников")
+
+System_Boundary(platform, "Notification Platform") {
+  ContainerQueue(kafka, "Шина событий", "Apache Kafka", "Раздельные топики и квоты")
+  Container(ingest, "Приём и API статусов", "Go", "Приём из Kafka, callback, relay команд и сигналов")
+  Container(bulk, "Некритичная доставка", "Go", "Кампании, согласия и тихие часы")
+  ContainerDb(ledger, "Операционное хранилище", "PostgreSQL, 3 зоны", "Вход, команды, callback, попытки и проекция статуса")
+  Container(temporal, "Движок оркестрации", "Temporal Server", "Запуск workflow, планирование задач и таймеров")
+  ContainerDb(history, "Хранилище Temporal", "PostgreSQL, 3 зоны", "История workflow и задачи")
+  Container(worker, "Воркеры критичной доставки", "Go, Temporal SDK", "Workflow, выбор маршрута и внешние вызовы в Activities")
+}
+System_Ext(profile, "Профили клиентов", "Проверенные контакты и настройки")
+System_Ext(channels, "Провайдеры push / SMS / email", "Передают уведомления; возвращают статус")
+System_Ext(mobile, "Приложение банка", "Обрабатывает push и подтверждает получение")
+System_Ext(obs, "Мониторинг банка", "OpenTelemetry, Prometheus, Grafana")
+
+Rel(bank,kafka,"Публикует из outbox","Kafka / TLS")
+Rel(kafka,ingest,"Передаёт критичные события","Kafka / TLS")
+Rel(kafka,bulk,"Передаёт прочие события","Kafka / TLS")
+Rel(ingest,ledger,"Хранит вход и callback; читает статус","SQL / TLS")
+Rel(ingest,temporal,"Запускает workflow и передаёт сигналы","gRPC / TLS")
+Rel(temporal,history,"Хранит историю и задачи","SQL / TLS")
+Rel(worker,temporal,"Забирает задачи, фиксирует исходы","gRPC / TLS")
+Rel(worker,ledger,"Обновляет попытки, пишет проекцию","SQL / TLS")
+Rel(bank,ingest,"Запрашивает статус","HTTPS")
+Rel(worker,profile,"Уточняет настройки и контакты","HTTPS")
+Rel(worker,channels,"Отправляет, проверяет статус","HTTPS")
+Rel(bulk,channels,"Отправляет через свою квоту","HTTPS")
+Rel(channels,ingest,"Передаёт статусы SMS / email","HTTPS")
+Rel(channels,mobile,"Передаёт push","Сеть push")
+Rel(mobile,ingest,"Подтверждает приём push","HTTPS")
+Rel(channels,user,"Доставляет SMS / email","Мобильная сеть / email")
+Rel(mobile,user,"Показывает push","Интерфейс")
+Rel(worker,obs,"Экспортирует метрики и трассы","OTLP / TLS")
+
+@enduml

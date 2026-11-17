@@ -1,0 +1,35 @@
+@startuml
+!include sequence-style.puml
+title A. Failover с push на SMS
+
+database PostgreSQL as DB
+participant "Доставка" as Delivery
+participant "Push-провайдер" as Push
+participant "SMS-провайдер" as SMS
+
+Delivery -> DB : Записывает начало push-попытки
+Delivery -> Push : Отправляет push
+alt Подтверждённый отказ
+    Push --> Delivery : Терминальная недоставка
+    Delivery -> DB : Фиксирует отказ и готовит резерв
+else Ответ или ACK отсутствует
+    Delivery -> DB : UNKNOWN + таймер и задание сверки
+    Delivery -> Push : Сверяет исход / запрашивает отмену, если доступно
+    alt Доставка подтверждена
+        Delivery -> DB : DELIVERED, резерв отменяется
+    else Недоставка подтверждена
+        Delivery -> DB : Фиксирует отказ и готовит резерв
+    else Через 30 с исход неизвестен
+        Delivery -> DB : Единожды разрешает резерв,\nесли маршрут есть и успеха ещё нет
+    end
+end
+opt Резерв разрешён и доставка ещё не подтверждена
+    Delivery -> DB : Фиксирует начало SMS-попытки
+    Delivery -> SMS : Отправляет SMS с постоянным attempt_id
+    SMS --> Delivery : Callback о доставке
+    Delivery -> DB : Фиксирует DELIVERED и останавливает будущие попытки
+end
+opt Push поздно подтверждён после начала SMS
+    Delivery -> DB : Учитывает поздний ACK;\nпри успехе двух каналов отмечает дубль
+end
+@enduml

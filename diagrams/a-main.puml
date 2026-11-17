@@ -1,0 +1,28 @@
+@startuml
+!include sequence-style.puml
+title A. Основной сценарий — push подтверждён
+
+participant "Сервис банка" as Bank
+queue Kafka
+participant "Приём" as In
+database PostgreSQL as DB
+participant "Доставка" as Delivery
+participant "Push-провайдер" as Push
+participant "Приложение" as App
+
+Bank -> Bank : Операция + outbox, одна транзакция
+Bank -> Kafka : Relay публикует событие
+Kafka -> In : Критичное событие
+In -> DB : Коммит входа и задания по бизнес-ключу
+DB --> In : Сохранено / уже принято
+In -> Kafka : Фиксирует offset
+Delivery -> DB : Берёт задание и фиксирует attempt_id
+Delivery -> Delivery : Проверяет маршрут и контакт
+Delivery -> Push : Отправляет push (attempt_id, notification_id)
+Push --> Delivery : Запрос принят
+Delivery -> DB : Приём провайдером + таймер ожидания
+Push -> App : Отправляет push
+App -> App : Принимает и дедуплицирует по notification_id
+App -> Delivery : ACK с корреляцией попытки
+Delivery -> DB : Сохраняет ACK → DELIVERED,\nснимает будущие задания
+@enduml

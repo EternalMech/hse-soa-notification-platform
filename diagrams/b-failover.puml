@@ -1,0 +1,42 @@
+@startuml
+!include sequence-style.puml
+title B. Failover с push на SMS
+
+participant Temporal as T
+participant "Воркеры" as W
+database "Опер. БД" as DB
+participant "Callback API / relay" as In
+participant "Push-провайдер" as Push
+participant "SMS-провайдер" as SMS
+
+T -> W : Activity отправки push
+W -> DB : Сохраняет идентификатор и начало попытки
+W -> Push : Отправляет push
+alt Подтверждённый отказ
+    Push --> W : Терминальная недоставка
+    W -> T : Результат activity, план резерва
+else Ответ или ACK отсутствует
+    W -> T : Результат/таймер, наступает UNKNOWN
+    T -> W : Сверка исхода в activity
+    W -> Push : Проверяет статус / запрашивает отмену
+    alt Пришло подтверждение доставки
+        In -> DB : Сохраняет результат
+        In -> T : Сигнал; workflow отменяет резерв
+    else Терминальный отказ
+        W -> T : Можно планировать резерв
+    else Исход остаётся неизвестен
+        T -> W : Долговечный таймер, 30 с от UNKNOWN
+        W -> T : Workflow единожды разрешает резерв при условиях RFC
+    end
+end
+opt Workflow разрешил резерв
+    T -> W : Activity для SMS
+    W -> DB : Проверяет подтверждения и записывает начало попытки
+    W -> SMS : Отправляет с постоянным attempt_id
+    SMS -> In : Callback о доставке
+    In -> DB : Сохраняет результат
+    In -> T : Сигнал завершает доставку
+    T -> W : Задача обновить проекцию
+    W -> DB : Пишет итоговый статус
+end
+@enduml

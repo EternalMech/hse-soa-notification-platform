@@ -1,0 +1,38 @@
+@startuml
+!pragma layout smetana
+!include <C4/C4_Container>
+
+LAYOUT_TOP_DOWN()
+title A. Notification Platform — C4 Container
+
+Person(user, "Клиент банка", "Получает уведомления, управляет предпочтениями")
+System_Ext(bank, "Банковские сервисы", "Платежи, переводы, продукты и маркетинг; outbox у источников")
+
+System_Boundary(platform, "Notification Platform") {
+  ContainerQueue(kafka, "Шина событий", "Apache Kafka", "Раздельные топики и квоты")
+  Container(ingest, "Приём критичных событий", "Go", "Проверка, дедупликация и первичное задание")
+  Container(bulk, "Некритичная доставка", "Go", "Кампании, согласия и тихие часы")
+  ContainerDb(pg, "Хранилище критичной доставки", "PostgreSQL, 3 зоны", "Вход, состояние процесса, задачи, попытки и результаты")
+  Container(delivery, "Сервис критичной доставки", "Go", "Планирование, маршрутизация, вызовы каналов, статусы")
+}
+System_Ext(profile, "Профили клиентов", "Проверенные контакты и настройки")
+System_Ext(channels, "Провайдеры push / SMS / email", "Передают уведомления; возвращают статус")
+System_Ext(mobile, "Приложение банка", "Обрабатывает push и подтверждает получение")
+System_Ext(obs, "Мониторинг банка", "OpenTelemetry, Prometheus, Grafana")
+
+Rel(bank,kafka,"Публикует из outbox","Kafka / TLS")
+Rel(kafka,ingest,"Передаёт критичные события","Kafka / TLS")
+Rel(kafka,bulk,"Передаёт прочие события","Kafka / TLS")
+Rel(ingest,pg,"Хранит вход и первое задание","SQL / TLS")
+Rel(delivery,pg,"Читает вход, ведёт процесс","SQL / TLS")
+Rel(bank,delivery,"Запрашивает статус","HTTPS")
+Rel(delivery,profile,"Уточняет настройки и контакты","HTTPS")
+BiRel(delivery,channels,"Отправка, сверка и статусы SMS / email","HTTPS")
+Rel(bulk,channels,"Отправляет через свою квоту","HTTPS")
+Rel(channels,mobile,"Передаёт push","Сеть push")
+Rel(mobile,delivery,"Подтверждает приём push","HTTPS")
+Rel(channels,user,"Доставляет SMS / email","Мобильная сеть / email")
+Rel(mobile,user,"Показывает push","Интерфейс")
+Rel(delivery,obs,"Экспортирует метрики и трассы","OTLP / TLS")
+
+@enduml
